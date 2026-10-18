@@ -17,7 +17,8 @@ async function agents(path: string, body?: unknown, method = body ? "POST" : "GE
   const response = await fetch(`https://api.openai.com/v1/agents/sessions${path}`, { method, headers: { Authorization: `Bearer ${key}`, "OpenAI-Beta": "agents=v1", "Content-Type": "application/json" }, ...(body ? { body: JSON.stringify(body) } : {}), cache: "no-store", signal: AbortSignal.timeout(45000) });
   if (!response.ok) throw new AgentsError(response.status === 429 ? "Agents APIの利用枠に達しました。" : "Agents APIの応答を確認できません。権限・設定を確認してください。", response.status >= 400 && response.status < 500 && response.status !== 408);
   if (method === "DELETE" && response.status === 204) return {};
-  return record(await response.json());
+  const raw = await response.text();
+  return raw ? record(JSON.parse(raw)) : {};
 }
 function sessionPath(id: string) { return `/${encodeURIComponent(id)}`; }
 export async function startRehearsal(owner: string, runId: string) {

@@ -19,7 +19,8 @@ function recover(value: unknown) {
 async function agents(path: string, body?: unknown, method = body ? "POST" : "GET") {
   const response = await fetch(`https://api.openai.com/v1/agents/sessions${path}`, { method, headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, "OpenAI-Beta": "agents=v1", "Content-Type": "application/json" }, ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(45000), cache: "no-store" });
   if (!response.ok) throw new Error(`Agents API (${response.status})：利用権限・利用枠を確認してください。`);
-  return response.status === 204 ? {} : await response.json();
+  const raw = await response.text();
+  return raw ? JSON.parse(raw) : {};
 }
 export async function POST(request: NextRequest) {
   if (!verifySession(request.cookies.get(SESSION_COOKIE)?.value)) return json({ error: "ログインが必要です。" }, 401);
