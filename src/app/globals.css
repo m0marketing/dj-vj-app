@@ -1,0 +1,210 @@
+@import "tailwindcss";
+
+:root {
+  --background: #09090b;
+  --foreground: #e4e4e7;
+  --panel: #131316;
+  --panel-2: #1b1b20;
+  --border: #27272a;
+  --accent: #22d3ee;
+  --accent-2: #f472b6;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-panel: var(--panel);
+  --color-panel-2: var(--panel-2);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-2: var(--accent-2);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+html,
+body {
+  min-height: 100%;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  overscroll-behavior-x: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+}
+html {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+input[type="text"],
+input:not([type]) {
+  user-select: text;
+  -webkit-user-select: text;
+  font-size: 16px;
+}
+@media (min-width: 768px) {
+  input[type="text"],
+  input:not([type]) {
+    font-size: inherit;
+  }
+}
+
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: #3f3f46;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  height: 16px;
+  width: 16px;
+  margin-top: -6px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid #0a0a0a;
+}
+input[type="range"]::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: #3f3f46;
+}
+input[type="range"]::-moz-range-thumb {
+  height: 16px;
+  width: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid #0a0a0a;
+}
+input[type="range"].vertical {
+  writing-mode: vertical-lr;
+  direction: rtl;
+  width: 24px;
+  touch-action: pan-x;
+}
+input[type="range"]:not(.vertical) {
+  touch-action: pan-y;
+}
+@media (pointer: coarse) {
+  input[type="range"]::-webkit-slider-runnable-track {
+    height: 6px;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    height: 26px;
+    width: 26px;
+    margin-top: -10px;
+  }
+  input[type="range"]::-moz-range-thumb {
+    height: 26px;
+    width: 26px;
+  }
+  input[type="range"] {
+    min-height: 32px;
+  }
+  input[type="range"].vertical {
+    width: 36px;
+  }
+  .btn {
+    min-height: 40px;
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+}
+
+.btn {
+  @apply rounded-md border border-border bg-panel-2 px-2.5 py-1.5 text-xs font-medium text-zinc-200 transition hover:border-zinc-500 hover:bg-zinc-800 active:scale-95 disabled:opacity-40 disabled:pointer-events-none;
+}
+.btn-accent {
+  @apply border-accent/50 bg-accent/15 text-accent hover:bg-accent/25;
+}
+/* Actions (do something once) look solid; toggles (stay on / off) get an LED, see below. */
+.btn-primary {
+  @apply border-accent bg-accent font-semibold text-black hover:bg-accent/85;
+}
+.btn-danger {
+  @apply border-rose-500/50 bg-rose-500/15 text-rose-300 hover:bg-rose-500/25;
+}
+
+.label {
+  @apply text-[11px] uppercase tracking-wider text-zinc-400;
+}
+
+/* Keyboard focus only (mouse clicks blur buttons, see KeyboardShortcuts) */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+button:focus:not(:focus-visible) {
+  outline: none;
+}
+
+@keyframes pad-hit {
+  from {
+    filter: brightness(2);
+  }
+  to {
+    filter: brightness(1);
+  }
+}
+.pad-hit {
+  animation: pad-hit 0.25s ease-out;
+}
+
+/* Toggle buttons: a small LED so "on" is never confused with a highlighted one-shot action. */
+.btn[aria-pressed]::before,
+.btn[aria-expanded]::before {
+  content: "";
+  display: inline-block;
+  width: 0.4rem;
+  height: 0.4rem;
+  margin-right: 0.4rem;
+  border-radius: 9999px;
+  vertical-align: 0.05em;
+  background: #52525b;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.4);
+}
+.btn[aria-pressed="true"]::before,
+.btn[aria-expanded="true"]::before {
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+}
+.btn.btn-danger[aria-pressed="true"]::before {
+  background: #fb7185;
+  box-shadow: 0 0 6px #fb7185;
+}
+/* Small icon-style toggles (preview, pad stop) skip the LED */
+.btn.no-led::before {
+  display: none;
+}
+
+/* Touch devices: bigger targets (≥ 40px) for every button / tab / slider. */
+@media (pointer: coarse) {
+  .btn,
+  [role="tab"],
+  [role="radio"] {
+    min-height: 2.5rem;
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+  }
+  input[type="range"] {
+    height: 2.25rem;
+  }
+  input[type="checkbox"] {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+}
