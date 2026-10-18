@@ -533,6 +533,8 @@ interface DJState {
   queueRemove: (index: number) => void;
   queueMove: (index: number, dir: -1 | 1) => void;
   queueClear: () => void;
+  /** Apply a reviewed AI suggestion while automatic playback is stopped. */
+  applySuggestedQueue: (ids: string[]) => boolean;
   /** Reorder the queue for smooth BPM / key flow (greedy nearest neighbour on the Camelot wheel + tempo). */
   queueSmartSort: () => void;
   planCurve: PlanCurve;
@@ -1032,6 +1034,21 @@ export const useDJ = create<DJState>((set, get) => {
       setPref("djQueue", q);
     },
     queueClear: () => setPref("djQueue", []),
+    applySuggestedQueue: (ids) => {
+      const s = get();
+      if (s.autoDJ || s.mixing || s.plan) {
+        set(toast("Auto DJ・ミックス・セットプランを停止してから曲順を反映してください", "error"));
+        return false;
+      }
+      if (ids.length < 2 || ids.length > 20 || new Set(ids).size !== ids.length || ids.some((id) => !s.tracks.some((t) => t.id === id))) {
+        set(toast("対象曲が変わりました。曲順をもう一度提案してください", "error"));
+        return false;
+      }
+      setPref("djQueue", [...ids]);
+      setPref("djOrder", "queue");
+      set({ nextOverride: null, ...toast(`提案した ${ids.length} 曲の順番をキューに反映しました`, "success") });
+      return true;
+    },
     queueSmartSort: () => {
       const s = get();
       const items = s.djQueue.map((id) => s.tracks.find((t) => t.id === id)).filter((t): t is TrackMeta => !!t);

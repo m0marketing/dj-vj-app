@@ -4,6 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import { MODES, useDJ } from "@/lib/store";
 import { VJ_SHOWS, VJ_THEMES } from "@/lib/types";
 import AudioTicker from "./AudioTicker";
+import AIAssistant from "./AIAssistant";
+import AIDirector from "./AIDirector";
+import QuickRehearsal from "./QuickRehearsal";
+import AutomationPanel from "./AutomationPanel";
 import ConfirmDialog from "./ConfirmDialog";
 import DeckPanel from "./DeckPanel";
 import DrumMachine from "./DrumMachine";
@@ -169,6 +173,15 @@ export default function Studio() {
           </button>
         </div>
       </header>
+
+      <PanelBoundary name="AI アシスト">
+        <AIAssistant />
+        <AIDirector />
+        <QuickRehearsal />
+      </PanelBoundary>
+      <PanelBoundary name="イベント連携・自動リハーサル">
+        <AutomationPanel />
+      </PanelBoundary>
 
       <div className={`grid gap-3 max-md:contents md:grid-cols-2 ${layout === "vj" ? "lg:grid-cols-[1fr_1fr_1.25fr] xl:grid-cols-[1fr_1fr_1.55fr] 2xl:grid-cols-[1fr_1fr_1.7fr]" : "lg:grid-cols-[1fr_1fr_minmax(300px,0.9fr)]"}`}>
         <div className="flex min-w-0 flex-col gap-3 max-md:contents">
