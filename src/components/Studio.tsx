@@ -115,6 +115,9 @@ export default function Studio() {
           </label>
         </div>
         <div className="flex items-center gap-2 text-[11px]">
+          <form action="/api/auth/logout" method="post">
+            <button className="btn" type="submit" title="このブラウザの音源と設定を残してログアウト">ログアウト</button>
+          </form>
           {(autoFollow || autoDJ) && (
             <button
               className="rounded-full border border-accent/40 bg-accent/10 px-2 py-0.5 text-accent hover:bg-accent/20"
