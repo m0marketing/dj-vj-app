@@ -1,9 +1,13 @@
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
 import type { PadConfig, SampleMeta, SampleRecord, TrackMeta, TrackRecord } from "./types";
+import { blobStorageFailed, packBlob, unpackBlob, type StoredBlob } from "./blob-storage";
+
+type StoredRecord<T extends { blob: Blob }> = Omit<T, "blob"> & { blob: Blob | StoredBlob };
+const unpackRecord = <T extends { blob: unknown }>(rec: T) => ({ ...rec, blob: unpackBlob(rec.blob) as Blob });
 
 interface DJDB extends DBSchema {
-  tracks: { key: string; value: TrackRecord; indexes: { createdAt: number } };
-  samples: { key: string; value: SampleRecord; indexes: { createdAt: number } };
+  tracks: { key: string; value: StoredRecord<TrackRecord>; indexes: { createdAt: number } };
+  samples: { key: string; value: StoredRecord<SampleRecord>; indexes: { createdAt: number } };
   pads: { key: number; value: PadConfig };
   settings: { key: string; value: unknown };
 }
@@ -24,7 +28,18 @@ function getDB() {
   return dbPromise;
 }
 
-export function stripBlob<T extends { blob: Blob }>(rec: T): Omit<T, "blob"> {
+// Remember the capability for this page; do not retry a failed Blob write for every kit sound.
+let packBinary = false;
+async function putAudio(store: "tracks" | "samples", rec: TrackRecord | SampleRecord) {
+  const database = await getDB();
+  if (!packBinary) {
+    try { await database.put(store, rec); return; }
+    catch (error) { if (!blobStorageFailed(error)) throw error; packBinary = true; }
+  }
+  await database.put(store, { ...rec, blob: await packBlob(rec.blob) });
+}
+
+export function stripBlob<T extends { blob: unknown }>(rec: T): Omit<T, "blob"> {
   const copy: Partial<T> = { ...rec };
   delete copy.blob;
   return copy as Omit<T, "blob">;
@@ -36,10 +51,11 @@ export const db = {
     return all.map(stripBlob).reverse();
   },
   async getTrack(id: string) {
-    return (await getDB()).get("tracks", id);
+    const rec = await (await getDB()).get("tracks", id);
+    return rec ? unpackRecord(rec) : undefined;
   },
   async putTrack(track: TrackRecord) {
-    await (await getDB()).put("tracks", track);
+    await putAudio("tracks", track);
   },
   async updateTrack(id: string, patch: Partial<TrackMeta>) {
     // Read-modify-write inside ONE readwrite transaction: several analyses (BPM, key, loudness, chorus, vocals)
@@ -59,10 +75,11 @@ export const db = {
     return all.map(stripBlob).reverse();
   },
   async getSample(id: string) {
-    return (await getDB()).get("samples", id);
+    const rec = await (await getDB()).get("samples", id);
+    return rec ? unpackRecord(rec) : undefined;
   },
   async putSample(sample: SampleRecord) {
-    await (await getDB()).put("samples", sample);
+    await putAudio("samples", sample);
   },
   async deleteSample(id: string) {
     await (await getDB()).delete("samples", id);
@@ -76,10 +93,17 @@ export const db = {
   },
 
   async getSetting<T>(key: string): Promise<T | undefined> {
-    return (await getDB()).get("settings", key) as Promise<T | undefined>;
+    return unpackBlob(await (await getDB()).get("settings", key)) as T | undefined;
   },
   async setSetting(key: string, value: unknown) {
-    await (await getDB()).put("settings", value, key);
+    const database = await getDB();
+    if (value instanceof Blob) {
+      if (!packBinary) {
+        try { await database.put("settings", value, key); return; }
+        catch (error) { if (!blobStorageFailed(error)) throw error; packBinary = true; }
+      }
+      await database.put("settings", await packBlob(value), key);
+    } else await database.put("settings", value, key);
   },
   async deleteSetting(key: string) {
     await (await getDB()).delete("settings", key);
@@ -87,16 +111,16 @@ export const db = {
 
   /** Full records (with blobs) for backup. */
   async allTrackRecords(): Promise<TrackRecord[]> {
-    return (await getDB()).getAll("tracks");
+    return (await (await getDB()).getAll("tracks")).map(unpackRecord);
   },
   async allSampleRecords(): Promise<SampleRecord[]> {
-    return (await getDB()).getAll("samples");
+    return (await (await getDB()).getAll("samples")).map(unpackRecord);
   },
   async allSettings(): Promise<Record<string, unknown>> {
     const d = await getDB();
     const keys = await d.getAllKeys("settings");
     const out: Record<string, unknown> = {};
-    for (const k of keys) out[k] = await d.get("settings", k);
+    for (const k of keys) out[k] = unpackBlob(await d.get("settings", k));
     return out;
   },
   async clearAll() {

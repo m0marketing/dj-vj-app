@@ -56,7 +56,11 @@ export class Sampler {
   }
 
   setVolume(v: number) {
-    this.output.gain.setTargetAtTime(v, this.ctx.currentTime, 0.01);
+    const t = this.ctx.currentTime, gain = this.output.gain;
+    // Anchor the ramp explicitly: an idle bus must already be muted when its next voice starts.
+    gain.cancelScheduledValues(t);
+    gain.setValueAtTime(gain.value, t);
+    gain.linearRampToValueAtTime(v, t + 0.01);
   }
 
   isActive(index: number) {

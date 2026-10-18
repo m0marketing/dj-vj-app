@@ -229,9 +229,9 @@ flowchart LR
 | `src/lib/audio/` | デッキ、音声ルーティング、解析、サンプラー、シーケンサー、音源合成 |
 | `public/keylock-worklet.js` / `public/scratch-worklet.js` | キーロックと双方向スクラッチの音声処理 |
 | `src/lib/vj/` | 描画プリセット、シーン演出、ワンショット FX、特徴量の配信 |
-| `src/lib/db.ts` / `src/lib/zip.ts` | ブラウザ保存とバックアップ |
+| `src/lib/db.ts` / `src/lib/blob-storage.ts` / `src/lib/zip.ts` | ブラウザ保存（Blob を保存できない環境向けのバイナリ代替を含む）とバックアップ |
 | `src/lib/auth.ts` / `src/proxy.ts` | アクセスコードの照合、セッション署名、画面のアクセス制御 |
-| `tests/` | 認証・音楽補助ロジック・演出パラメータ・ZIP の単体テスト |
+| `tests/` | 認証・音楽補助ロジック・演出パラメータ・保存形式・Agents セッション・ZIP の単体テスト |
 
 ## ローカルで起動する
 
@@ -267,9 +267,12 @@ npx tsc --noEmit -p .
 npm run lint
 npm run build
 npm run rehearsal
+npm run test:audio
 ```
 
 `npm test` は純粋なロジックとデータ契約の単体テストを実行します。
+
+`npm run test:audio` は一時的な認証設定と独立したブラウザ保存領域で内蔵キットを実際に生成し、マスター出力の音声波形を測定します。8バンク、音声中断からの復帰、キー・タッチ操作、Gate / Toggle、音量0からの復帰、ドラム・デッキ、遅いテンポ同期中のキャンセル、再読み込み、破損サンプルを確認します。`AUDIO_TEST_ENGINE=webkit npm run test:audio` でSafari系のエンジンも使えます（先に `npx playwright install webkit`）。結果は `.playwright-mcp/audio/` に保存します。スピーカーや実機の聴感は別途確認してください。
 
 | テスト | 確認する内容 |
 | --- | --- |
@@ -279,13 +282,15 @@ npm run rehearsal
 | [phase.test.ts](tests/phase.test.ts) | 合成キックの時間差検出。40 ms のずれを誤差8 ms以内で検出するケース、先行・再生速度差のケース |
 | [key.test.ts](tests/key.test.ts) | Camelot 番号、キーの相性、互換キーへのシフト |
 | [show.test.ts](tests/show.test.ts) | 演出パラメータの補間、ストロボ設定、保存 Look の参照整合性 |
+| [agent-session.test.ts](tests/agent-session.test.ts) | 実行中 Agents セッションのキャンセル後削除、409 の再試行、削除済み (404) の扱い、失敗時に再実行できるエラー |
+| [blob-storage.test.ts](tests/blob-storage.test.ts) | 音声バイトと MIME タイプの保持、既存 Blob レコード・通常設定の透過、Blob 保存に失敗した場合のみ代替形式へ移行 |
 | [zip.test.ts](tests/zip.test.ts) | 日本語ファイル名とバイナリデータを含む ZIP の書き出し・読み込み |
 
 単体テストの対象は上記の範囲です。AI アシストの画面操作とAPI成功時・異常時はモック応答でも確認しています。実際のモデルへの接続と提案品質の確認には、APIキーを設定した環境が必要です。楽曲全般での解析精度、音の聴感、実機の音声出力・MIDI・描画は、デモ手順に沿って確認できます。公開時には本番 URL で未ログイン時の転送、コード照合、認証後の画面取得、ログアウトの HTTP 応答も確認しています。
 
 ## 保存・ログイン・デプロイ
 
-- **保存先:** 音源・サンプル・キュー・プレイリスト・素材・設定は IndexedDB、再開状態や MIDI 割り当てなどは localStorage に保存します。音源をサーバーへアップロードする処理はありません。
+- **保存先:** 音源・サンプル・キュー・プレイリスト・素材・設定は IndexedDB、再開状態や MIDI 割り当てなどは localStorage に保存します。音源をサーバーへアップロードする処理はありません。Blob を IndexedDB に保存できないブラウザでは、音声データを ArrayBuffer 形式へ自動で切り替えて保存します。
 - **自動処理の保存先:** 登録したイベント本文・購読先・署名鍵・配信状態・Agents実行IDはサーバーのファイルまたはRedisに保存します。通知時はイベント本文を購読先へ、Agents実行時は検証の指示と期限付きチケットをOpenAIへ送信します。
 - **端末間の移動:** 同じアクセスコードでもデータは同期されません。別端末や localhost から公開 URL へ移す場合は、Library の ZIP バックアップを使います。ログアウト後も端末内の保存データは残ります。
 - **認証:** `ACCESS_CODE_HASH` にコードの SHA-256、`AUTH_SECRET` に署名鍵を設定します。ログインは署名付き HttpOnly / Secure / SameSite=Lax Cookie で7日間保持し、コードや署名鍵の変更で既存セッションも無効になります。

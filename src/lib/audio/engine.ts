@@ -196,10 +196,19 @@ export class AudioEngine {
     flOut.gain.value = 0.9;
     fl.connect(flOut).connect(fxOut);
 
-    // iOS / background tabs suspend the context; wake it up when the page is visible again.
-    if (typeof document !== "undefined") document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && void this.resume());
+    // Returning from the background can leave audio suspended until another user gesture.
+    // Resume during the gesture itself so pads, decks and the sequencer all recover.
+    const wake = () => {
+      if (this.ctx.state === "running" || this.ctx.state === "closed") return;
+      void this.resume().catch((error) => console.warn("audio resume unavailable", error));
+    };
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") wake(); });
+      document.addEventListener("pointerdown", wake, { capture: true, passive: true });
+      document.addEventListener("keydown", wake, { capture: true });
+    }
     this.ctx.onstatechange = () => {
-      if (this.ctx.state === "interrupted" as string) void this.resume();
+      if (this.ctx.state === "interrupted" as string) wake();
     };
   }
 
@@ -379,7 +388,10 @@ export class AudioEngine {
   }
 
   setMasterVolume(v: number) {
-    this.master.gain.setTargetAtTime(v, this.ctx.currentTime, 0.01);
+    const t = this.ctx.currentTime, gain = this.master.gain;
+    gain.cancelScheduledValues(t);
+    gain.setValueAtTime(gain.value, t);
+    gain.linearRampToValueAtTime(v, t + 0.01);
   }
 
   /**

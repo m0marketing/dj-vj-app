@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { sameOrigin, SESSION_COOKIE, verifySession } from "@/lib/auth";
 import { rehearsalTicket } from "@/lib/automation/security";
 import { boundedJson } from "@/lib/automation/http";
+import { AgentRequestError, deleteAgentSession } from "@/lib/automation/agent-session";
 export const maxDuration = 60;
 const json = (body: unknown, status = 200) => NextResponse.json(body, { status, headers: { "Cache-Control": "private, no-store" } });
 const signature = (value: string) => createHmac("sha256", process.env.AUTH_SECRET!).update(`rehearsal-session:${value}`).digest("base64url");
@@ -16,9 +17,9 @@ function recover(value: unknown) {
   if (typeof data.id !== "string" || !/^[a-zA-Z0-9_-]+$/.test(data.id) || typeof data.origin !== "string" || !Number.isFinite(data.exp) || data.exp < Date.now()) throw new Error("セッション情報の期限が切れました。");
   return data as { id: string; origin: string };
 }
-async function agents(path: string, body?: unknown, method = body ? "POST" : "GET") {
-  const response = await fetch(`https://api.openai.com/v1/agents/sessions${path}`, { method, headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, "OpenAI-Beta": "agents=v1", "Content-Type": "application/json" }, ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(45000), cache: "no-store" });
-  if (!response.ok) throw new Error(`Agents API (${response.status})：利用権限・利用枠を確認してください。`);
+async function agents(path: string, body?: unknown, method = body ? "POST" : "GET", signal?: AbortSignal) {
+  const response = await fetch(`https://api.openai.com/v1/agents/sessions${path}`, { method, headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, "OpenAI-Beta": "agents=v1", "Content-Type": "application/json" }, ...(body ? { body: JSON.stringify(body) } : {}), signal: signal ?? AbortSignal.timeout(45000), cache: "no-store" });
+  if (!response.ok) throw new AgentRequestError(`Agents API (${response.status})：利用権限・利用枠を確認してください。`, response.status);
   const raw = await response.text();
   return raw ? JSON.parse(raw) : {};
 }
@@ -45,7 +46,7 @@ export async function POST(request: NextRequest) {
       finally { await stream.body?.cancel(); }
       return json({ state: "running" });
     }
-    if (input.action === "delete") { await agents(path, undefined, "DELETE"); return json({ state: "deleted" }); }
+    if (input.action === "delete") { await deleteAgentSession(agents, path); return json({ state: "deleted" }); }
     const session = await agents(path);
     if (input.action === "approve") {
       const action = session.required_actions?.find((a: { request_id: string }) => a.request_id === input.requestId);

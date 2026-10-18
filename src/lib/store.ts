@@ -347,6 +347,7 @@ const quantizeDelay = (q: Quantize, decks: Record<DeckId, DeckState>, crossfader
 
 /** Pads whose buffers were re-rendered in memory: index -> "bpm|shift". */
 const matchedPads = new Map<number, string>();
+const padRequests = new Map<number, symbol>();
 
 /** BPM / key the loops should follow: the playing deck (or the loaded one on the crossfader side). */
 const matchTarget = () => {
@@ -973,8 +974,9 @@ export const useDJ = create<DJState>((set, get) => {
       matchedPads.clear();
       set({ keyShift: 0, ...toast("ループを元のテンポ/キーに戻しました") });
     },
-    stopPad: (i) => getEngine().sampler.release(i, true),
+    stopPad: (i) => { padRequests.delete(i); getEngine().sampler.release(i, true); },
     stopAll: () => {
+      padRequests.clear();
       if (getEngine().sequencer.playing) get().seqToggle();
       getEngine().sampler.stopAll();
       get().stopPreview();
@@ -2158,6 +2160,7 @@ export const useDJ = create<DJState>((set, get) => {
         if (saved?.length) set({ looks: [...BUILTIN_LOOKS, ...saved] });
       }
       const pads = Array.from({ length: PAD_COUNT }, (_, i) => savedPads.find((p) => p.index === i) ?? defaultPad(i));
+      let unreadableSamples = 0;
       for (let i = 0; i < pads.length; i++) {
         let p = pads[i];
         const rec = p.sampleId ? await getSampleRec(p.sampleId) : null;
@@ -2168,7 +2171,10 @@ export const useDJ = create<DJState>((set, get) => {
           void db.putPad(p);
         }
         engine.sampler.setConfig(p);
-        if (rec) engine.sampler.setBuffer(p.index, await engine.decode(rec.id, rec.blob));
+        if (rec) {
+          try { engine.sampler.setBuffer(p.index, await engine.decode(rec.id, rec.blob)); }
+          catch (error) { unreadableSamples++; console.warn("sample decode unavailable", rec.id, error); }
+        }
       }
       engine.sampler.onChange = (active) => set({ activePads: [...active] });
       engine.decks.A.onScratchEnd = engine.decks.B.onScratchEnd = () => get().syncDecks();
@@ -2192,6 +2198,7 @@ export const useDJ = create<DJState>((set, get) => {
       engine.decks.A.onEnded = engine.decks.B.onEnded = () => get().syncDecks();
       const ids = new Set(tracks.map((t) => t.id));
       set({ ready: true, tracks, samples, pads, vj: { ...defaultVJ, ...vj }, ...p, djPool: (p.djPool ?? []).filter((id) => ids.has(id)), playlists: playlists ?? [] });
+      if (unreadableSamples) set(toast(`${unreadableSamples}個のパッド音源を読み込めませんでした。対象パッドの編集から音源を再割り当てしてください。保存データは残っています。`, "error"));
       // Offer to continue a session that was playing less than 30 minutes ago (reload, crash, accidental close).
       try {
         const raw = localStorage.getItem("session");
@@ -2756,16 +2763,32 @@ export const useDJ = create<DJState>((set, get) => {
 
     pressPad: (i, immediate = false) => {
       const pad = get().pads[i];
+      if (!get().ready || !pad) return;
+      if (!pad.sampleId && !pad.speech) {
+        set(toast(get().seeding ? "内蔵音源を準備中です。名前が表示されたパッドから使えます。" : "このパッドには音源がありません。「編集」からサンプルを割り当ててください。", "info"));
+        return;
+      }
+      if (pad.sampleId && !getEngine().sampler.buffers.has(i)) {
+        set(toast("このパッドの音源を読み込めませんでした。「編集」から音源を再割り当てしてください。", "error"));
+        return;
+      }
+      const request = Symbol();
+      padRequests.set(i, request);
       if (pad.loopBpm && get().autoMatch && pad.sampleId) {
         const t = matchTarget();
         if (matchedPads.get(i) !== `${t.bpm}|${t.shift}` && (matchedPads.has(i) || t.bpm !== 128 || t.shift !== 0)) {
-          void renderPad(pad, t.bpm, t.shift).then(() => pressNow(i, immediate));
+          void renderPad(pad, t.bpm, t.shift).then(() => {
+            if (padRequests.get(i) === request && get().pads[i].sampleId === pad.sampleId) pressNow(i, immediate);
+          }).catch(() => set(toast("ループ音源の準備に失敗しました。もう一度パッドを押してください。", "error")));
           return;
         }
       }
       pressNow(i, immediate);
     },
-    releasePad: (i) => getEngine().sampler.release(i),
+    releasePad: (i) => {
+      if (["gate", "loop"].includes(get().pads[i]?.mode)) padRequests.delete(i);
+      getEngine().sampler.release(i);
+    },
     setEcho: (on) => {
       getEngine().sampler.setEcho(on, currentBpm(get().decks, get().crossfader));
       set({ echo: on });

@@ -2,20 +2,21 @@ import { randomUUID } from "node:crypto";
 import { rehearsalTicket } from "./security";
 import { mutateAutomation, readAutomation } from "./storage";
 import { addEvent, parseEvent, record, text } from "./model";
+import { AgentRequestError, deleteAgentSession } from "./agent-session";
 
 export function rehearsalBase() {
   const url = new URL(process.env.REHEARSAL_BASE_URL || "https://unconfigured.invalid");
   if (!process.env.REHEARSAL_BASE_URL || url.protocol !== "https:" || url.username || url.password || url.pathname !== "/" || url.search || url.hash) throw new Error("REHEARSAL_BASE_URL に公開HTTPSオリジンを設定してください。");
   return url.origin;
 }
-class AgentsError extends Error {
-  constructor(message: string, public definite: boolean) { super(message); }
+class AgentsError extends AgentRequestError {
+  constructor(message: string, public definite: boolean, status: number) { super(message, status); }
 }
-async function agents(path: string, body?: unknown, method = body ? "POST" : "GET"): Promise<Record<string, unknown>> {
+async function agents(path: string, body?: unknown, method = body ? "POST" : "GET", signal?: AbortSignal): Promise<Record<string, unknown>> {
   const key = process.env.OPENAI_API_KEY;
   if (!key) throw new Error("OPENAI_API_KEY の設定が必要です。");
-  const response = await fetch(`https://api.openai.com/v1/agents/sessions${path}`, { method, headers: { Authorization: `Bearer ${key}`, "OpenAI-Beta": "agents=v1", "Content-Type": "application/json" }, ...(body ? { body: JSON.stringify(body) } : {}), cache: "no-store", signal: AbortSignal.timeout(45000) });
-  if (!response.ok) throw new AgentsError(response.status === 429 ? "Agents APIの利用枠に達しました。" : "Agents APIの応答を確認できません。権限・設定を確認してください。", response.status >= 400 && response.status < 500 && response.status !== 408);
+  const response = await fetch(`https://api.openai.com/v1/agents/sessions${path}`, { method, headers: { Authorization: `Bearer ${key}`, "OpenAI-Beta": "agents=v1", "Content-Type": "application/json" }, ...(body ? { body: JSON.stringify(body) } : {}), cache: "no-store", signal: signal ?? AbortSignal.timeout(45000) });
+  if (!response.ok) throw new AgentsError(response.status === 429 ? "Agents APIの利用枠に達しました。" : "Agents APIの応答を確認できません。権限・設定を確認してください。", response.status >= 400 && response.status < 500 && response.status !== 408, response.status);
   if (method === "DELETE" && response.status === 204) return {};
   const raw = await response.text();
   return raw ? record(JSON.parse(raw)) : {};
@@ -117,7 +118,7 @@ export async function approveRehearsal(owner: string, id: string, requestId: str
 }
 export async function deleteRehearsal(owner: string, id: string) {
   const run = await ownRun(owner, id);
-  await agents(sessionPath(run.sessionId!), undefined, "DELETE");
+  await deleteAgentSession(agents, sessionPath(run.sessionId!));
   await mutateAutomation((state) => { const target = state.runs.find((r) => r.id === id && r.owner === owner); if (target) target.state = "deleted"; });
 }
 export const newRunId = () => `run_${randomUUID()}`;

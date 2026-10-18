@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "node --test tests/",
-    "rehearsal": "npm run build && node scripts/rehearsal.mjs"
+    "rehearsal": "npm run build && node scripts/rehearsal.mjs",
+    "test:audio": "npm run build && node scripts/audio-check.mjs"
   },
   "dependencies": {
     "idb": "^8.0.4",

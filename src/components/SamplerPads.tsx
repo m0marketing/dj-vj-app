@@ -30,6 +30,9 @@ export default function SamplerPads() {
   const echo = useDJ((s) => s.echo);
   const seqOpen = useDJ((s) => s.seq.open);
   const seqPlaying = useDJ((s) => s.seq.playing);
+  const seeding = useDJ((s) => s.seeding);
+  const samplerVolume = useDJ((s) => s.samplerVolume);
+  const masterVolume = useDJ((s) => s.masterVolume);
   const playingCount = activePads.length;
   const { pressPad, releasePad, updatePad, assignSample, importSamples } = useDJ.getState();
   const [editing, setEditing] = useState<number | null>(null);
@@ -91,6 +94,12 @@ export default function SamplerPads() {
             {editing != null ? "完了" : "編集"}
           </button>
         </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3 text-xs">
+        <label className="flex items-center gap-2">音量 <input type="range" min={0} max={1.5} step={0.01} value={samplerVolume} aria-label="サンプラー音量" className="w-28" onChange={(e) => useDJ.getState().setSamplerVolume(Number(e.target.value))} /><span className="w-10 font-mono">{Math.round(samplerVolume * 100)}%</span></label>
+        {seeding && <span role="status" className="text-zinc-400">内蔵音源を準備中です。名前が表示されたパッドから使えます。</span>}
+        {(samplerVolume === 0 || masterVolume === 0) && <span role="status" className="text-amber-300">{masterVolume === 0 ? "マスター音量が0です。" : "サンプラー音量が0です。"}<button className="btn ml-2" onClick={() => { if (samplerVolume === 0) useDJ.getState().setSamplerVolume(1); if (masterVolume === 0) useDJ.getState().setMasterVolume(0.9); }}>音量を戻す</button></span>}
       </div>
 
       {seqOpen && (
@@ -310,6 +319,26 @@ function Pad({ pad, keyLabel, active, selected, filled, editing, onPress, onRele
       }}
       onPointerUp={() => !editing && onRelease()}
       onPointerCancel={onRelease}
+      onLostPointerCapture={onRelease}
+      onKeyDown={(e) => {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (!e.repeat) { if (editing) onEdit(); else onPress(); }
+      }}
+      onKeyUp={(e) => {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (!editing) onRelease();
+      }}
+      onBlur={onRelease}
+      onClick={(e) => {
+        // Assistive technology can activate a button without pointer/key events.
+        if (e.detail !== 0) return;
+        if (editing) onEdit();
+        else { onPress(); onRelease(); }
+      }}
       onContextMenu={(e) => {
         e.preventDefault();
         onEdit();
